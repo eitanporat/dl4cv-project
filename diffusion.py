@@ -136,7 +136,7 @@ class GaussianDiffusionSampler(nn.Module):
             x_0 = self.model(x_t, t)
             model_mean, _ = self.q_mean_variance(x_0, x_t, t)
         elif self.mean_type == 'epsilon':   # the model predicts epsilon
-            eps = self.model(x_t, t)
+            eps = self.model(x_t, t) 
             x_0 = self.predict_xstart_from_eps(x_t, t, eps=eps)
             model_mean, _ = self.q_mean_variance(x_0, x_t, t)
         else:

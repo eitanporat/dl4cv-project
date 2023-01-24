@@ -188,12 +188,11 @@ def get_statistics(images, num_images=None, batch_size=50, use_torch=False,
         # calculate inception feature
         batch_images = torch.from_numpy(batch_images).type(torch.FloatTensor)
         batch_images = batch_images.to(device)
-        with torch.no_grad():
-            pred = model(batch_images)
-            if use_torch:
-                fid_acts[start: end] = pred[0].view(-1, 2048)
-            else:
-                fid_acts[start: end] = pred[0].view(-1, 2048).cpu().numpy()
+        pred = model(batch_images)
+        if use_torch:
+            fid_acts[start: end] = pred[0].view(-1, 2048)
+        else:
+            fid_acts[start: end] = pred[0].view(-1, 2048).cpu().numpy()
         start = end
 
     if use_torch:
@@ -218,6 +217,4 @@ def get_fid_score(stats_cache, images, num_images=None, batch_size=50,
         s2 = torch.tensor(s2).to(s1.dtype)
     fid_value = calculate_frechet_distance(m1, s1, m2, s2, use_torch=use_torch)
 
-    if use_torch:
-        fid_value = fid_value.cpu().item()
     return fid_value

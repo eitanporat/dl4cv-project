@@ -3,6 +3,7 @@
 stats
 data
 logs
+DDPM_CIFAR10_EPS
 
 .python-version
 __pycache__
