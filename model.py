@@ -10,7 +10,6 @@ class Swish(nn.Module):
         return x * torch.sigmoid(x)
 
 
-
 class TimeEmbedding(nn.Module):
     def __init__(self, T, d_model, dim):
         assert d_model % 2 == 0
