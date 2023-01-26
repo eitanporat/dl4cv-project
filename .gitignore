@@ -4,6 +4,7 @@ stats
 data
 logs
 DDPM_CIFAR10_EPS
-
+attached.png
+generated/
 .python-version
 __pycache__
