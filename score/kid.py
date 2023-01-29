@@ -19,14 +19,14 @@ class KernelInceptionDistance(nn.Module):
         n = generated_images.size(0)
         chunks = n // 8
         
-        gen_features = torch.cat([self.model(chunk)[0] for chunk in generated_images.chunk(chunks)])
+        gen_features = torch.cat([self.model(chunk)[0] for chunk in generated_images.chunk(chunks)]) # n * dim
         gen_features = gen_features.flatten(start_dim=1)
 
-        real_features = torch.cat([self.model(chunk)[0] for chunk in real_images.chunk(chunks)])
+        real_features = torch.cat([self.model(chunk)[0] for chunk in real_images.chunk(chunks)]) # n * dim
         real_features = real_features.flatten(start_dim=1)
 
-        cov1 = gen_features @ gen_features.transpose(0, 1)
-        cov2 = real_features @ real_features.transpose(0, 1)
+        cov1 = gen_features @ gen_features.transpose(0, 1) # n * n
+        cov2 = real_features @ real_features.transpose(0, 1) # n * n
 
         score1 = 1./(n*(n-1)) * (cov1.sum() - cov1.trace())
         score2 = 1./(n*(n-1)) * (cov2.sum() - cov2.trace())
