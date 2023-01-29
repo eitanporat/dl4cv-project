@@ -16,7 +16,7 @@ flags.DEFINE_integer('T', 1000, help='total diffusion steps')
 flags.DEFINE_enum('mean_type', 'epsilon', ['xprev', 'xstart', 'epsilon'], help='predict variable')
 flags.DEFINE_enum('var_type', 'fixedlarge', ['fixedlarge', 'fixedsmall'], help='variance type')
 # Training
-flags.DEFINE_float('lr', 2e-4, help='target learning rate')
+flags.DEFINE_float('lr', 1e-3, help='target learning rate')
 flags.DEFINE_float('grad_clip', 1., help="gradient norm clipping")
 flags.DEFINE_integer('total_steps', 10000, help='total training steps')
 flags.DEFINE_integer('img_size', 32, help='image size')
@@ -38,5 +38,8 @@ flags.DEFINE_string('fid_cache', './stats/cifar10.train.npz', help='FID cache')
 
 # optimizer
 flags.DEFINE_integer('optimizer_kernel_size', 1, help='Optimizer Neural Network kernel size')
-flags.DEFINE_integer('optimizer_out_channels', 9, help='Optimizer Neural Network Out Channels (Intermediate representation)')
+flags.DEFINE_integer('optimizer_out_channels', 3, help='Optimizer Neural Network Out Channels (Intermediate representation)')
 flags.DEFINE_integer('optimizer_time_steps', 5, help='Optimizer Neural Network Number Of Layers / Optimizer Timesteps')
+flags.DEFINE_integer('save_every', 20, help='interval for saving a picture to see progress')
+
+flags.DEFINE_string('checkpoint', '', help='Model checkpoint')

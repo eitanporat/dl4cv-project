@@ -21,3 +21,9 @@ $$z'_t = \begin{pmatrix}x_t \\ f_{\theta}(x_t, t) \\ \epsilon \\ \log g_{\phi}(y
 $g_\phi$ is the inception network.
 
 7. Impainting ❌
+8. Why is the time embedding important?
+9. Create Hybrid Sampler-Gradient Architecture - Diffusion GANs?
+10. GAN Loss - use a pretrained cifar10 classifier
+11. Train simpler model for diffusion
+12. Loss = ||E(x+noise_t, t)-E(x)||_2 + ||D(E(x))-x||_2 where E is an encoder and D is a decoder
+13. Model fine-tuning

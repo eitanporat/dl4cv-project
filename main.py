@@ -4,7 +4,7 @@ import os
 import warnings
 from config import FLAGS
 import torch
-from tensorboardX import SummaryWriter
+# from tensorboardX import SummaryWriter
 from torchvision.datasets import CIFAR10
 from torchvision.utils import make_grid, save_image
 from torchvision import transforms
@@ -44,7 +44,7 @@ def evaluate(sampler, model):
         for i in trange(0, FLAGS.num_images, FLAGS.batch_size, desc=desc):
             batch_size = min(FLAGS.batch_size, FLAGS.num_images - i)
             x_T = torch.randn((batch_size, 3, FLAGS.img_size, FLAGS.img_size))
-            batch_images = sampler(x_T.to(device)).cpu()
+            batch_images = sampler(model, x_T.to(device)).cpu()
             images.append((batch_images + 1) / 2)
         images = torch.cat(images, dim=0).numpy()
     model.train()
