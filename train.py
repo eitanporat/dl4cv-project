@@ -18,7 +18,38 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 import sys
 from main import evaluate, infiniteloop
+from itertools import chain
+from tqdm import trange
+from model import UNet
+from score.both import get_inception_and_fid_score
+import time
 
+def evaluate(sampler, model):
+    model.eval()
+    file_dir = f'./generated/{time.strftime("%Y%m%d-%H%M%S")}-{FLAGS.optimizer_kernel_size}-{FLAGS.optimizer_out_channels}-{FLAGS.optimizer_time_steps}'
+    os.mkdir(file_dir)
+    with torch.no_grad():
+        images = []
+        desc = "generating images"
+        for i in trange(0, FLAGS.num_images, FLAGS.batch_size, desc=desc):
+            batch_size = min(FLAGS.batch_size, FLAGS.num_images - i)
+            x_T = torch.randn((batch_size, 3, FLAGS.img_size, FLAGS.img_size))
+            batch_images = sampler(model, x_T.to(device)).cpu()
+            batch_images = (batch_images + 1) / 2
+            batch_images = batch_images.clamp(0, 1)
+            batch_images = batch_images.view(-1, 3, FLAGS.img_size, FLAGS.img_size)
+            # convert to a grid of images
+            grid = make_grid(batch_images[:64], nrow=8, normalize=True)
+            # save the grid to a file
+            save_image(grid, f'{file_dir}/{i}.png')
+
+            images.append((batch_images + 1) / 2)
+        images = torch.cat(images, dim=0).numpy()
+
+    (IS, IS_std), FID = get_inception_and_fid_score(
+        images, FLAGS.fid_cache, num_images=FLAGS.num_images,
+        use_torch=FLAGS.fid_use_torch, verbose=True)
+    return (IS, IS_std), FID, images
 
 def prepare(rank, world_size, batch_size=32, pin_memory=False, num_workers=0):
     dataset = CIFAR10(
@@ -98,12 +129,12 @@ def train(rank, world_size):
         sampler = DDP(sampler, device_ids=[rank])
 
     if FLAGS.checkpoint:
-        print('Loading checkpoint...')
         checkpoint = torch.load(FLAGS.checkpoint)
         sampler.module.load_state_dict(checkpoint)
 
-    optim = torch.optim.Adam(sampler.parameters(), lr=FLAGS.lr)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optim, milestones=[100, 500], gamma=0.1)
+    # model.time_embedding.parameters()
+    optim = torch.optim.Adam(chain(sampler.parameters(), model.time_embedding.parameters()), lr=FLAGS.lr)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optim, milestones=[500, 1500], gamma=0.1)
 
     if rank == 0:
         file_dir = f'./generated/{time.strftime("%Y%m%d-%H%M%S")}-{FLAGS.optimizer_kernel_size}-{FLAGS.optimizer_out_channels}-{FLAGS.optimizer_time_steps}'
@@ -142,9 +173,13 @@ def train(rank, world_size):
         if rank == 0 and epoch % 100 == 0 and epoch != 0:
             torch.save(sampler.module.state_dict(),
                        f'{file_dir}/sampler-{loss.item():.4f}.ckpt')
+            torch.save(model.time_embedding.state_dict(),
+                       f'{file_dir}/time-embedding-{loss.item():.4f}.ckpt')
 
     if rank == 0:
-        torch.save(sampler.module.state_dict(), f'{file_dir}/last.ckpt')
+        torch.save(sampler.module.state_dict(), f'{file_dir}/sampler-last.ckpt')
+        torch.save(model.time_embedding.state_dict(),
+                    f'{file_dir}/time-embedding.ckpt')
 
     if FLAGS.parallel:
         cleanup()
@@ -181,21 +216,21 @@ def eval(argv):
     # load model and evaluate
     ckpt = torch.load(os.path.join(FLAGS.logdir, 'ckpt.pt'))
     model.load_state_dict(ckpt['net_model'])
-
     model = model.cuda()
-    model.eval()
+    time_embedding_checkpoint = torch.load('/home/eitanpo/dl4cv-eitan/generated/20230129-220018-1-3-10/time-embedding-2.5853.ckpt')
+    model.time_embedding.load_state_dict(time_embedding_checkpoint)
 
     sampler = OptimizerBasedDiffusion(FLAGS.optimizer_time_steps).cuda()
 
     # if checkpoint flag is set, load checkpoint
-    if FLAGS.checkpoint:
-        print('Loading checkpoint...')
-        checkpoint = torch.load(FLAGS.checkpoint)
-        sampler.load_state_dict(
-            {k.replace('.module', ''): v for k, v in checkpoint.items()})
+    print('Loading checkpoint...')
+    checkpoint = torch.load('/home/eitanpo/dl4cv-eitan/generated/20230129-220018-1-3-10/sampler-2.5853.ckpt')
+    sampler.load_state_dict(checkpoint)
+
+    model.eval()
 
     print(evaluate(sampler, model))
 
 
 if __name__ == '__main__':
-    app.run(main)
+    app.run(eval)
