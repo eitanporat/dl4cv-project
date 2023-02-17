@@ -10,13 +10,12 @@ class OptimizerBasedDiffusion(nn.Module):
         super(OptimizerBasedDiffusion, self).__init__()
         self.sampler = Sampler(time_steps=time_steps)
         self.time_steps = time_steps
-        self.ts = torch.zeros(time_steps, dtype=torch.float32)
 
     def step(self, model, x_t, time_step):
+        ones = torch.ones((x_t.shape[0], ), dtype=torch.long).to(x_t.device)
+        t = ones * int((FLAGS.T - 1) * (time_step) / (self.time_steps - 1))
         noise = torch.randn_like(x_t).to(x_t.device)
-        ones = torch.ones((x_t.shape[0], ), dtype=torch.float32).to(x_t.device)
-        t = ones * (FLAGS.T - 1) * torch.cumsum(F.softmax(self.ts, dim=0), dim=0)[time_step]
-        eps = model(x_t, t.int()).to(x_t.device)
+        eps = model(x_t, t).to(x_t.device)
         z = torch.cat([x_t, eps, noise], dim=1)
         return self.sampler(time_step, z)
 
@@ -25,6 +24,7 @@ class OptimizerBasedDiffusion(nn.Module):
         if self.training:
             x_t.requires_grad = True
         for time_step in reversed(range(self.time_steps)):
+            # time steps
             if self.training:
                 x_t = checkpoint.checkpoint(self.step, model, x_t, time_step)
             else:
@@ -39,6 +39,7 @@ class SamplerTimestepLayer(nn.Module):
         self.c = nn.Parameter(torch.tensor(0.))
 
     def forward(self, x):
+        # a * image + b * noise + c * gaussian
         out = self.a * x[:, :3] + self.b * x[:, 3:6] + self.c * x[:, 6:]
         return out
 
