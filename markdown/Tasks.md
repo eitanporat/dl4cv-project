@@ -35,6 +35,7 @@ $g_\phi$ is the inception network.
 19. More steps of optimization - More layers
 20. Momentum
 21. Adam
+22. DDIM
 
 
 

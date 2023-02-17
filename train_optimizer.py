@@ -17,8 +17,9 @@ from torch.utils.data.distributed import DistributedSampler
 import torch.distributed as dist
 import torch.multiprocessing as mp
 import sys
-from main import evaluate, infiniteloop
 from itertools import chain
+from helpers import infiniteloop, evaluate
+
 
 def prepare(rank, world_size, batch_size=32, pin_memory=False, num_workers=0):
     dataset = CIFAR10(
@@ -61,9 +62,10 @@ def monitor_loss(sampler, lr):
         weight = layer.b
         print(
             f'Layer {i}:\tB={layer.b.item()}\tgrad/weight ratio: {lr * grad / weight:.6f}')
-        # grad = layer.c.grad.std()
-        # weight = layer.c.std()
-        # print(f'Layer {i}:\tC\tgrad/weight ratio: {lr * grad / weight:.6f}')
+
+        grad = layer.c.grad.std()
+        weight = layer.c.std()
+        print(f'Layer {i}:\tC\tgrad/weight ratio: {lr * grad / weight:.6f}')
 
 
 def train(rank, world_size):
@@ -177,29 +179,5 @@ def main(argv):
     else:
         train(0, 1)
 
-
-def eval(argv):
-    model = UNet(
-        T=FLAGS.T, ch=FLAGS.ch, ch_mult=FLAGS.ch_mult, attn=FLAGS.attn,
-        num_res_blocks=FLAGS.num_res_blocks, dropout=FLAGS.dropout)
-    # load model and evaluate
-    ckpt = torch.load(os.path.join(FLAGS.logdir, 'ckpt.pt'))
-    model.load_state_dict(ckpt['net_model'])
-    model = model.cuda()
-    time_embedding_checkpoint = torch.load('/home/eitanpo/dl4cv-eitan/generated/20230129-220018-1-3-10/time-embedding-2.5853.ckpt')
-    model.time_embedding.load_state_dict(time_embedding_checkpoint)
-
-    sampler = OptimizerBasedDiffusion(FLAGS.optimizer_time_steps).cuda()
-
-    # if checkpoint flag is set, load checkpoint
-    if FLAGS.checkpoint:
-        print('Loading checkpoint...')
-        checkpoint = torch.load(FLAGS.checkpoint)
-        sampler.load_state_dict(
-            {k.replace('.module', ''): v for k, v in checkpoint.items()})
-
-    print(evaluate(sampler, model))
-
-
 if __name__ == '__main__':
-    app.run(eval)
+    app.run(main)

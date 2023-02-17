@@ -15,31 +15,28 @@ class GaussianDiffusionTimestepsSampler(nn.Module):
 
         self.model = model
         self.T_orig = T_orig
+        self.T = T_orig
         self.T_reduced = T_reduced
         self.img_size = img_size
         self.mean_type = mean_type
         self.var_type = var_type
-
-        self.T = T_reduced
-        T = T_reduced
-
+        self.eta = 0
         self.k = T_orig // T_reduced
-        assert self.k*T_reduced - T_orig == 0.0, "T_reduced is an integer ratiod with T_orig"
+        assert T_orig % T_reduced == 0, "T_reduced is a divisor of T_orig"
 
-        # self.register_buffer('betas', torch.linspace(beta_1, beta_T, T).double())
-        betas_orig = torch.linspace(beta_1, beta_T, T_orig).double()
-        betas_reduced = 1-((1-betas_orig).view((T_reduced, self.k)).prod(dim=1))
+        self.register_buffer('betas', torch.linspace(beta_1, beta_T, self.T_orig).double())
+        # betas_orig = torch.linspace(beta_1, beta_T, T_orig).double()
+        # betas_reduced = 1-((1-betas_orig).view((T_reduced, self.k)).prod(dim=1))
         
-        self.register_buffer('betas', betas_reduced)
+        # self.register_buffer('betas', betas_reduced)
 
         alphas = 1. - self.betas
         
         alphas_bar = torch.cumprod(alphas, dim=0)
         
-        alphas_bar_prev = F.pad(alphas_bar, [1, 0], value=1)[:T]
+        alphas_bar_prev = F.pad(alphas_bar, [1, 0], value=1)[:self.T]
 
-        print(*[s.shape for s in [alphas, alphas_bar, alphas_bar_prev]])
-
+        self.register_buffer('alphas_bar', alphas_bar)
         # calculations for diffusion q(x_t | x_{t-1}) and others
         self.register_buffer(
             'sqrt_recip_alphas_bar', torch.sqrt(1. / alphas_bar))
@@ -63,13 +60,15 @@ class GaussianDiffusionTimestepsSampler(nn.Module):
             'posterior_mean_coef2',
             torch.sqrt(alphas) * (1. - alphas_bar_prev) / (1. - alphas_bar))
 
+        self.register_buffer('coef1', torch.sqrt(alphas_bar_prev))
+        self.register_buffer('coef2', torch.sqrt(1-alphas_bar_prev))
 
     def extract(self, v, t, x_shape):
         """
         extract some coefficients at specified timesteps, then reshape to
         [batch_size, 1, 1, 1, 1, ...] for broadcasting purposes.
         """
-        out = torch.gather(v, index=t//self.k, dim=0).float()
+        out = torch.gather(v, index=t, dim=0).float()
         return out.view([t.shape[0]] + [1] * (len(x_shape) - 1))
 
     def q_mean_variance(self, x_0, x_t, t):
@@ -149,3 +148,22 @@ class GaussianDiffusionTimestepsSampler(nn.Module):
             x_t = mean + torch.exp(0.5 * log_var) * noise
         x_0 = x_t
         return torch.clip(x_0, -1, 1)
+
+    def ddim_sample(self, x_T):
+        x_t = x_T
+        x_0 = None
+        for time_step in reversed(range(self.T_reduced)):
+            time_step = (time_step + 1) * self.k - 1
+            time_step_prev = time_step - self.k
+
+            t = x_t.new_ones([x_T.shape[0], ], dtype=torch.long) * time_step
+            t_prev = x_t.new_ones([x_T.shape[0], ], dtype=torch.long) * time_step_prev
+
+            eps = self.model(x_t, t) 
+            x_0 = self.predict_xstart_from_eps(x_t, t, eps=eps)
+
+            if time_step_prev < 0:
+                return torch.clip(x_0, -1, 1)
+
+            x_t = x_0 * self.extract(self.coef1, t_prev, x_t.shape) \
+                + eps * self.extract(self.coef2, t_prev, x_t.shape)

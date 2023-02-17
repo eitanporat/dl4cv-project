@@ -39,7 +39,12 @@ flags.DEFINE_string('fid_cache', './stats/cifar10.train.npz', help='FID cache')
 # optimizer
 flags.DEFINE_integer('optimizer_kernel_size', 1, help='Optimizer Neural Network kernel size')
 flags.DEFINE_integer('optimizer_out_channels', 3, help='Optimizer Neural Network Out Channels (Intermediate representation)')
-flags.DEFINE_integer('optimizer_time_steps', 5, help='Optimizer Neural Network Number Of Layers / Optimizer Timesteps')
+flags.DEFINE_integer('optimizer_time_steps', 10, help='Optimizer Neural Network Number Of Layers / Optimizer Timesteps')
 flags.DEFINE_integer('save_every', 20, help='interval for saving a picture to see progress')
 
-flags.DEFINE_string('checkpoint', '', help='Model checkpoint')
+flags.DEFINE_string('model_checkpoint', './logs/DDPM_CIFAR10_EPS/ckpt.pt', help='model checkpoint')
+flags.DEFINE_string('sampler_checkpoint', '', help='sampler checkpoint')
+flags.DEFINE_string('time_embedding_checkpoint', '', help='sampler checkpoint')
+
+flags.DEFINE_integer('T_reduced', 10, help='T reduced')
+flags.DEFINE_string('sampler_type', 'ddim', help='sampler checkpoint')

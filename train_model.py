@@ -14,7 +14,7 @@ import time
 from diffusion import GaussianDiffusionTrainer, GaussianDiffusionSampler
 from model import UNet
 from score.both import get_inception_and_fid_score
-
+from helpers import *
 
 FLAGS = flags.FLAGS
 flags.DEFINE_bool('train', False, help='train from scratch')
@@ -31,13 +31,13 @@ flags.DEFINE_float('beta_T', 0.02, help='end beta value')
 flags.DEFINE_integer('T', 1000, help='total diffusion steps')
 flags.DEFINE_enum('mean_type', 'epsilon', ['xprev', 'xstart', 'epsilon'], help='predict variable')
 flags.DEFINE_enum('var_type', 'fixedlarge', ['fixedlarge', 'fixedsmall'], help='variance type')
-# Training
+# Training 
 flags.DEFINE_float('lr', 2e-4, help='target learning rate')
 flags.DEFINE_float('grad_clip', 1., help="gradient norm clipping")
 flags.DEFINE_integer('total_steps', 800000, help='total training steps')
 flags.DEFINE_integer('img_size', 32, help='image size')
 flags.DEFINE_integer('warmup', 5000, help='learning rate warmup')
-flags.DEFINE_integer('batch_size', 128, help='batch size')
+flags.DEFINE_integer('batch_size', 512, help='batch size')
 flags.DEFINE_integer('num_workers', 4, help='workers of Dataloader')
 flags.DEFINE_float('ema_decay', 0.9999, help="ema decay rate")
 flags.DEFINE_bool('parallel', False, help='multi gpu training')
@@ -64,50 +64,8 @@ def ema(source, target, decay):
             source_dict[key].data * (1 - decay))
 
 
-def infiniteloop(dataloader):
-    while True:
-        for x, y in iter(dataloader):
-            yield x
-
-
 def warmup_lr(step):
     return min(step, FLAGS.warmup) / FLAGS.warmup
-
-
-def evaluate(sampler, model, save_images=False):
-    model.eval()
-    if save_images:
-        file_dir = f'./generated/{time.strftime("%Y%m%d-%H%M%S")}-{FLAGS.optimizer_kernel_size}-{FLAGS.optimizer_out_channels}-{FLAGS.optimizer_time_steps}'
-        os.mkdir(file_dir)
-
-    with torch.no_grad():
-        images = []
-        desc = "generating images"
-        for i in trange(0, FLAGS.num_images, FLAGS.batch_size, desc=desc):
-            batch_size = min(FLAGS.batch_size, FLAGS.num_images - i)
-            x_T = torch.randn((batch_size, 3, FLAGS.img_size, FLAGS.img_size))
-            batch_images = sampler(x_T.to(device)).detach().cpu()
-            images.append((batch_images + 1) / 2)
-
-            if save_images:
-                if i % FLAGS.save_every == 0:
-                    # convert the tensor of images `images` to a grid of images
-                    batch = images[-1]
-                    batch = (batch + 1) / 2
-                    batch = batch.clamp(0, 1)
-                    batch = batch.view(-1, 3, FLAGS.img_size, FLAGS.img_size)
-                    # convert to a grid of images
-                    grid = make_grid(batch[:64], nrow=8, normalize=True)
-                    # save the grid to a file
-                    save_image(grid, f'{file_dir}/{i}_eval.png')
-    
-        images = torch.cat(images, dim=0).numpy()
-    model.train()
-    (IS, IS_std), FID = get_inception_and_fid_score(
-        images, FLAGS.fid_cache, num_images=FLAGS.num_images,
-        use_torch=FLAGS.fid_use_torch, verbose=True)
-
-    return (IS, IS_std), FID, images
 
 
 def train():

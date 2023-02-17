@@ -157,7 +157,7 @@ class ResBlock(nn.Module):
         h = self.attn(h)
         return h
 
-
+# e_theta(x_t, t) ≈ x0
 class UNet(nn.Module):
     def __init__(self, T, ch, ch_mult, attn, num_res_blocks, dropout):
         super().__init__()
