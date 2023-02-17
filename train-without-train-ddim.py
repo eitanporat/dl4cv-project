@@ -18,7 +18,8 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 import sys
 from main import evaluate, infiniteloop
-from itertools import chain
+
+from sampler_without_training import GaussianDiffusionTimestepsSampler
 
 def prepare(rank, world_size, batch_size=32, pin_memory=False, num_workers=0):
     dataset = CIFAR10(
@@ -98,12 +99,12 @@ def train(rank, world_size):
         sampler = DDP(sampler, device_ids=[rank])
 
     if FLAGS.checkpoint:
+        print('Loading checkpoint...')
         checkpoint = torch.load(FLAGS.checkpoint)
         sampler.module.load_state_dict(checkpoint)
 
-    # model.time_embedding.parameters()
-    optim = torch.optim.Adam(chain(sampler.parameters(), model.time_embedding.parameters()), lr=FLAGS.lr)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optim, milestones=[500, 1500], gamma=0.1)
+    optim = torch.optim.Adam(sampler.parameters(), lr=FLAGS.lr)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optim, milestones=[100, 500], gamma=0.1)
 
     if rank == 0:
         file_dir = f'./generated/{time.strftime("%Y%m%d-%H%M%S")}-{FLAGS.optimizer_kernel_size}-{FLAGS.optimizer_out_channels}-{FLAGS.optimizer_time_steps}'
@@ -142,13 +143,9 @@ def train(rank, world_size):
         if rank == 0 and epoch % 100 == 0 and epoch != 0:
             torch.save(sampler.module.state_dict(),
                        f'{file_dir}/sampler-{loss.item():.4f}.ckpt')
-            torch.save(model.time_embedding.state_dict(),
-                       f'{file_dir}/time-embedding-{loss.item():.4f}.ckpt')
 
     if rank == 0:
-        torch.save(sampler.module.state_dict(), f'{file_dir}/sampler-last.ckpt')
-        torch.save(model.time_embedding.state_dict(),
-                    f'{file_dir}/time-embedding.ckpt')
+        torch.save(sampler.module.state_dict(), f'{file_dir}/last.ckpt')
 
     if FLAGS.parallel:
         cleanup()
@@ -156,7 +153,7 @@ def train(rank, world_size):
 
 def main(argv):
     if FLAGS.parallel:
-        torch.multiprocessing.set_start_method('spawn', force=True)
+         torch.multiprocessing.set_start_method('spawn', force=True)
 
     # suppress annoying inception_v3 initialization warning
     print('Training...')
@@ -185,12 +182,15 @@ def eval(argv):
     # load model and evaluate
     ckpt = torch.load(os.path.join(FLAGS.logdir, 'ckpt.pt'))
     model.load_state_dict(ckpt['net_model'])
+
     model = model.cuda()
-    time_embedding_checkpoint = torch.load('/home/eitanpo/dl4cv-eitan/generated/20230129-220018-1-3-10/time-embedding-2.5853.ckpt')
-    model.time_embedding.load_state_dict(time_embedding_checkpoint)
+    model.eval()
 
-    sampler = OptimizerBasedDiffusion(FLAGS.optimizer_time_steps).cuda()
-
+    # sampler = OptimizerBasedDiffusion(FLAGS.optimizer_time_steps).cuda()
+    FLAGS.T
+    sampler = GaussianDiffusionTimestepsSampler(model, FLAGS.beta_1, FLAGS.beta_T, 
+    T_orig = FLAGS.T, T_reduced = FLAGS.T//2, img_size=FLAGS.img_size,
+        mean_type=FLAGS.mean_type, var_type=FLAGS.var_type).cuda()
     # if checkpoint flag is set, load checkpoint
     if FLAGS.checkpoint:
         print('Loading checkpoint...')
@@ -198,7 +198,7 @@ def eval(argv):
         sampler.load_state_dict(
             {k.replace('.module', ''): v for k, v in checkpoint.items()})
 
-    print(evaluate(sampler, model))
+    print(evaluate(sampler, model, save_images = True))
 
 
 if __name__ == '__main__':
