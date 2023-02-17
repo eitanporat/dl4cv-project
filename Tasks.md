@@ -27,6 +27,14 @@ $g_\phi$ is the inception network.
 11. Train simpler model for diffusion
 12. Loss = ||E(x+noise_t, t)-E(x)||_2 + ||D(E(x))-x||_2 where E is an encoder and D is a decoder
 13. Model fine-tuning
+14. Gan Loss
+15. Reconstruction Loss
+16. Train NN
+17. NN Diffusion Architecture - UNET
+18. Non-linear optimizers
+19. More steps of optimization - More layers
+20. Momentum
+21. Adam
 
 
 
