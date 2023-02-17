@@ -31,9 +31,9 @@ class OptimizerBasedDiffusion(nn.Module):
                 x_t = self.step(model, x_t, time_step)
         return x_t
 
-class SamplerTimestepLayer(nn.Module):
+class SamplerLinearTimestepLayer(nn.Module):
     def __init__(self) -> None:
-        super(SamplerTimestepLayer, self).__init__()
+        super(SamplerLinearTimestepLayer, self).__init__()
         self.a = nn.Parameter(torch.tensor(.9))
         self.b = nn.Parameter(torch.tensor(-.1))
         self.c = nn.Parameter(torch.tensor(0.))
@@ -46,7 +46,7 @@ class SamplerTimestepLayer(nn.Module):
 class Sampler(nn.Module):
     def __init__(self, time_steps=20):
         super(Sampler, self).__init__()
-        self.layers = nn.Sequential(*[SamplerTimestepLayer() for _ in range(time_steps)])
+        self.layers = nn.Sequential(*[SamplerLinearTimestepLayer() for _ in range(time_steps)])
 
     def forward(self, time_step, z_t):
         return self.layers[time_step](z_t)
