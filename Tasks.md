@@ -7,7 +7,7 @@ $$z_t = \begin{pmatrix}x_t \\ f_{\theta}(x_t, t) \\ \epsilon\end{pmatrix}$$
     b. Convolutional ✅
     c. With/without noise ❌
     d. Skip connection ✅
-    e. Learn time-steps ❌
+    e. Learn time-steps ✅
 3. Differentiable IS ❌
 4. Writing the training loop of the unrolling
     a. Modify the number of time-steps ❌
@@ -27,3 +27,8 @@ $g_\phi$ is the inception network.
 11. Train simpler model for diffusion
 12. Loss = ||E(x+noise_t, t)-E(x)||_2 + ||D(E(x))-x||_2 where E is an encoder and D is a decoder
 13. Model fine-tuning
+
+
+
+
+
