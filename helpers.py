@@ -48,4 +48,4 @@ def evaluate(sample_fn, save_images=False):
         images, FLAGS.fid_cache, num_images=FLAGS.num_images,
         use_torch=FLAGS.fid_use_torch, verbose=True)
 
-    return (IS, IS_std), FID, images
+    return (IS, IS_std), FID

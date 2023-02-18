@@ -19,7 +19,7 @@ import torch.multiprocessing as mp
 import sys
 from itertools import chain
 from helpers import infiniteloop, evaluate
-
+from lion import Lion
 
 def prepare(rank, world_size, batch_size=32, pin_memory=False, num_workers=0):
     dataset = CIFAR10(
@@ -56,15 +56,13 @@ def monitor_loss(sampler, lr):
     for i, layer in enumerate(sampler.module.sampler.layers):
         grad = layer.a.grad
         weight = layer.a
-        print(
-            f'Layer {i}:\tA={layer.a.item()}\tgrad/weight ratio: {lr * grad / weight:.6f}')
+        print(f'Layer {i}:\tA={layer.a.item()}\tgrad/weight ratio: {lr * grad / weight:.6f}')
         grad = layer.b.grad
         weight = layer.b
-        print(
-            f'Layer {i}:\tB={layer.b.item()}\tgrad/weight ratio: {lr * grad / weight:.6f}')
+        print(f'Layer {i}:\tB={layer.b.item()}\tgrad/weight ratio: {lr * grad / weight:.6f}')
 
-        grad = layer.c.grad.std()
-        weight = layer.c.std()
+        grad = layer.c.grad
+        weight = layer.c
         print(f'Layer {i}:\tC\tgrad/weight ratio: {lr * grad / weight:.6f}')
 
 
@@ -81,13 +79,18 @@ def train(rank, world_size):
         T=FLAGS.T, ch=FLAGS.ch, ch_mult=FLAGS.ch_mult, attn=FLAGS.attn,
         num_res_blocks=FLAGS.num_res_blocks, dropout=FLAGS.dropout)
     # load model and evaluate
-    ckpt = torch.load(os.path.join(FLAGS.logdir, 'ckpt.pt'))
-    model.load_state_dict(ckpt['net_model'])
+    if FLAGS.model_checkpoint:
+        checkpoint = torch.load(FLAGS.model_checkpoint)
+        model.load_state_dict(checkpoint['net_model'])
 
     model = model.to(rank)
     model.train()
 
     sampler = OptimizerBasedDiffusion(FLAGS.optimizer_time_steps).to(rank)
+
+    if FLAGS.sampler_checkpoint:
+        checkpoint = torch.load(FLAGS.sampler_checkpoint)
+        sampler.load_state_dict(checkpoint)
 
     # if checkpoint flag is set, load checkpoint
     kid = KernelInceptionDistance(parallel=FLAGS.parallel).to(rank)
@@ -98,13 +101,10 @@ def train(rank, world_size):
 
     if FLAGS.parallel:
         sampler = DDP(sampler, device_ids=[rank])
-
-    if FLAGS.checkpoint:
-        checkpoint = torch.load(FLAGS.checkpoint)
-        sampler.module.load_state_dict(checkpoint)
+        model = DDP(model, device_ids=[rank])
 
     # model.time_embedding.parameters()
-    optim = torch.optim.Adam(chain(sampler.parameters(), model.time_embedding.parameters()), lr=FLAGS.lr)
+    optim = Lion(chain(sampler.parameters(), model.parameters()), lr=FLAGS.lr)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optim, milestones=[500, 1500], gamma=0.1)
 
     if rank == 0:
@@ -143,14 +143,17 @@ def train(rank, world_size):
 
         if rank == 0 and epoch % 100 == 0 and epoch != 0:
             torch.save(sampler.module.state_dict(),
-                       f'{file_dir}/sampler-{loss.item():.4f}.ckpt')
-            torch.save(model.time_embedding.state_dict(),
-                       f'{file_dir}/time-embedding-{loss.item():.4f}.ckpt')
+                       f'{file_dir}/{loss.item():.4f}-sampler.ckpt')
+            # torch.save(model.time_embedding.state_dict(),
+            #            f'{file_dir}/time-embedding-{loss.item():.4f}.ckpt')
+
+        if rank == 0 and epoch % 1000 == 0 and epoch != 0:
+            torch.save(model.module.state_dict(), f'{file_dir}/{loss.item():.4f}-model.ckpt')
+
 
     if rank == 0:
         torch.save(sampler.module.state_dict(), f'{file_dir}/sampler-last.ckpt')
-        torch.save(model.time_embedding.state_dict(),
-                    f'{file_dir}/time-embedding.ckpt')
+        torch.save(model.module.state_dict(), f'{file_dir}/model-last.ckpt')
 
     if FLAGS.parallel:
         cleanup()

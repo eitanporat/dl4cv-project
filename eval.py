@@ -20,7 +20,8 @@ def eval(argv):
 
     if FLAGS.model_checkpoint:
         ckpt = torch.load(FLAGS.model_checkpoint)
-        model.load_state_dict(ckpt['net_model'])
+        ckpt = ckpt['net_model'] if 'net_model' in ckpt else ckpt
+        model.load_state_dict(ckpt)
         model = model.cuda()
         model.eval()
 
