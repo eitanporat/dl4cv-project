@@ -1,4 +1,4 @@
-from hyper_diffusion import OptimizerBasedDiffusion
+from hyper_diffusion import MomentumSampler
 import os
 from absl import app
 import torch
@@ -18,7 +18,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 import sys
 from itertools import chain
-from helpers import infiniteloop, evaluate
+from helpers import infiniteloop
 from lion import Lion
 
 def prepare(rank, world_size, batch_size=32, pin_memory=False, num_workers=0):
@@ -42,7 +42,7 @@ def prepare(rank, world_size, batch_size=32, pin_memory=False, num_workers=0):
 def setup(rank, world_size):
     warnings.simplefilter(action='ignore', category=FutureWarning)
     os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
+    os.environ['MASTER_PORT'] = '1232'
 
     # initialize the process group
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
@@ -53,13 +53,13 @@ def cleanup():
 
 
 def monitor_loss(sampler, lr):
-    for i, layer in enumerate(sampler.module.sampler.layers):
+    for i, layer in enumerate(sampler.module.layers):
         grad = layer.a.grad
         weight = layer.a
         print(f'Layer {i}:\tA={layer.a.item()}\tgrad/weight ratio: {lr * grad / weight:.6f}')
-        grad = layer.b.grad
-        weight = layer.b
-        print(f'Layer {i}:\tB={layer.b.item()}\tgrad/weight ratio: {lr * grad / weight:.6f}')
+        grad = layer.b.grad.std()
+        weight = layer.b.std()
+        print(f'Layer {i}:\tB={layer.b.tolist()}\tgrad/weight ratio: {lr * grad / weight:.6f}')
 
         grad = layer.c.grad
         weight = layer.c
@@ -72,8 +72,8 @@ def train(rank, world_size):
 
     FLAGS(argv=sys.argv)
 
-    progress_bar = tqdm(range(0, 100_000, world_size)
-                        ) if rank == 0 else range(100_000)
+    progress_bar = tqdm(range(0, 10000000000, world_size)
+                        ) if rank == 0 else range(10000000000)
 
     model = UNet(
         T=FLAGS.T, ch=FLAGS.ch, ch_mult=FLAGS.ch_mult, attn=FLAGS.attn,
@@ -83,10 +83,14 @@ def train(rank, world_size):
         checkpoint = torch.load(FLAGS.model_checkpoint)
         model.load_state_dict(checkpoint['net_model'])
 
+    if FLAGS.time_embedding_checkpoint:
+        checkpoint = torch.load(FLAGS.time_embedding_checkpoint)
+        model.time_embedding.load_state_dict(checkpoint)
+
     model = model.to(rank)
     model.train()
 
-    sampler = OptimizerBasedDiffusion(FLAGS.optimizer_time_steps).to(rank)
+    sampler = MomentumSampler(FLAGS.optimizer_time_steps).to(rank)
 
     if FLAGS.sampler_checkpoint:
         checkpoint = torch.load(FLAGS.sampler_checkpoint)
@@ -104,27 +108,47 @@ def train(rank, world_size):
         model = DDP(model, device_ids=[rank])
 
     # model.time_embedding.parameters()
-    optim = Lion(chain(sampler.parameters(), model.parameters()), lr=FLAGS.lr)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optim, milestones=[500, 1500], gamma=0.1)
+    if FLAGS.optimizer_type == 'adamw':
+        optimizer_class = torch.optim.AdamW
+    elif FLAGS.optimizer_type == 'adam':
+        optimizer_class = torch.optim.Adam
+    elif FLAGS.optimizer_type == 'sgd':
+        optimizer_class = torch.optim.SGD
+    elif FLAGS.optimizer_type == 'lion':
+        optimizer_class = Lion
+
+    if FLAGS.train_time_embedding:
+        optim = optimizer_class(chain(model.module.time_embedding.parameters(), sampler.parameters()), lr=FLAGS.lr)
+    else:
+        optim = optimizer_class(sampler.parameters(), lr=FLAGS.lr)
+    # scheduler = torch.optim.lr_scheduler.MultiStepLR(optim, milestones=[500, 1500], gamma=0.1)
 
     if rank == 0:
-        file_dir = f'./generated/{time.strftime("%Y%m%d-%H%M%S")}-{FLAGS.optimizer_kernel_size}-{FLAGS.optimizer_out_channels}-{FLAGS.optimizer_time_steps}'
+        if FLAGS.file_dir:
+            file_dir = FLAGS.file_dir + f'/{time.strftime("%Y%m%d-%H%M%S")}'
+        else:
+            file_dir = f'./generated/{time.strftime("%Y%m%d-%H%M%S")}'
         os.mkdir(file_dir)
+
+        with open(f'{file_dir}/config.txt', 'w+') as config_file:
+            # write flag to config file
+            for key, value in FLAGS.flag_values_dict().items():
+                config_file.write(f'{key}={value}\n')
 
     torch.manual_seed(1337 + rank)
 
     for epoch in progress_bar:
         distributed_sampler.set_epoch(epoch)
+        
+        optim.zero_grad()
         x_T = torch.randn((FLAGS.batch_size, 3, FLAGS.img_size, FLAGS.img_size)).to(rank)
         real_images = next(dataloader_iter).to(rank)
         real_images = 2 * real_images - 1
-        optim.zero_grad()
         images = sampler(model, x_T)
         loss = kid(images, real_images)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(sampler.parameters(), 1)
         optim.step()
-        scheduler.step()
 
         if rank == 0:
             progress_bar.set_postfix(loss=loss.item())
@@ -146,9 +170,8 @@ def train(rank, world_size):
                        f'{file_dir}/{loss.item():.4f}-sampler.ckpt')
             # torch.save(model.time_embedding.state_dict(),
             #            f'{file_dir}/time-embedding-{loss.item():.4f}.ckpt')
-
-        if rank == 0 and epoch % 1000 == 0 and epoch != 0:
-            torch.save(model.module.state_dict(), f'{file_dir}/{loss.item():.4f}-model.ckpt')
+            if FLAGS.train_time_embedding:
+                torch.save(model.module.time_embedding.state_dict(), f'{file_dir}/{loss.item():.4f}-time-embedding.ckpt')
 
 
     if rank == 0:

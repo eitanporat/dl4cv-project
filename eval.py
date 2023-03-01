@@ -7,7 +7,7 @@ from config import FLAGS
 from helpers import evaluate
 
 from ddim import GaussianDiffusionTimestepsSampler
-from hyper_diffusion import OptimizerBasedDiffusion
+from hyper_diffusion import MomentumSampler
 
 def load_checkpoint(path):
     checkpoint = torch.load(path)
@@ -37,9 +37,8 @@ def eval(argv):
         
         sample_fn = lambda x: sampler.ddim_sample(x)
 
-    if FLAGS.sampler_type == 'optimizer':
-        sampler = OptimizerBasedDiffusion(FLAGS.optimizer_time_steps).cuda()
-        sample_fn = lambda x: sampler(model, x)
+    if FLAGS.sampler_type == 'momentum':
+        sampler = MomentumSampler(FLAGS.optimizer_time_steps).cuda()
 
         if FLAGS.sampler_checkpoint:
             print('Loading sampler checkpoint...')
@@ -51,6 +50,9 @@ def eval(argv):
             checkpoint = load_checkpoint(FLAGS.time_embedding_checkpoint)
             model.time_embedding.load_state_dict(checkpoint)
 
+        sample_fn = lambda x: sampler(model, x)
+
+    sampler.eval()
     print(evaluate(sample_fn, save_images = True))
 
 
