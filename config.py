@@ -45,12 +45,16 @@ flags.DEFINE_integer('save_every', 20, help='interval for saving a picture to se
 flags.DEFINE_string('model_checkpoint', './logs/DDPM_CIFAR10_EPS/ckpt.pt', help='model checkpoint')
 flags.DEFINE_string('sampler_checkpoint', '', help='sampler checkpoint')
 flags.DEFINE_string('time_embedding_checkpoint', '', help='sampler checkpoint')
+flags.DEFINE_string('discriminator_checkpoint', '', help='discriminator checkpoint')
 
 flags.DEFINE_integer('T_reduced', 10, help='T reduced')
 flags.DEFINE_string('sampler_type', 'momentum', help='sampler type')
 flags.DEFINE_string('file_dir', '', help='sampler type')
 flags.DEFINE_bool('train_time_embedding', False, help='sampler type')
 flags.DEFINE_string('optimizer_type', 'AdamW', help='sampler type')
+
+flags.DEFINE_integer('critic_iters', 5, help='Critic Iterations')
+flags.DEFINE_integer('generator_iters', 10000000, help='Generator Iterations')
 
 flags.DEFINE_integer('step_every', 1, help='Update weights every n steps')
 

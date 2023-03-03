@@ -8,3 +8,6 @@ attached.png
 generated/
 .python-version
 __pycache__
+discriminator.pkl
+generator.pkl
+training_result_images

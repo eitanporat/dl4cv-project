@@ -20,6 +20,8 @@ import sys
 from itertools import chain
 from helpers import infiniteloop
 from lion import Lion
+from distributed_utils import setup, cleanup
+
 
 def prepare(rank, world_size, batch_size=32, pin_memory=False, num_workers=0):
     dataset = CIFAR10(
@@ -34,23 +36,9 @@ def prepare(rank, world_size, batch_size=32, pin_memory=False, num_workers=0):
             dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=True)
         dataloader = DataLoader(dataset, batch_size=batch_size, pin_memory=pin_memory,
                                 num_workers=num_workers, sampler=distributed_sampler, drop_last=True)
-    else:
-        return DataLoader(dataset, batch_size=batch_size, pin_memory=pin_memory, num_workers=num_workers, shuffle=True, drop_last=True)
-    return dataloader, distributed_sampler
-
-
-def setup(rank, world_size):
-    warnings.simplefilter(action='ignore', category=FutureWarning)
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '1232'
-
-    # initialize the process group
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
-
-
-def cleanup():
-    dist.destroy_process_group()
-
+        return dataloader, distributed_sampler
+    
+    return DataLoader(dataset, batch_size=batch_size, pin_memory=pin_memory, num_workers=num_workers, shuffle=True, drop_last=True)
 
 def monitor_loss(sampler, lr):
     for i, layer in enumerate(sampler.module.layers):
@@ -71,9 +59,9 @@ def train(rank, world_size):
         setup(rank, world_size)
 
     FLAGS(argv=sys.argv)
-
-    progress_bar = tqdm(range(0, 10000000000, world_size)
-                        ) if rank == 0 else range(10000000000)
+    
+    N = 10000000000
+    progress_bar = tqdm(range(0, N, world_size)) if rank == 0 else range(N)
 
     model = UNet(
         T=FLAGS.T, ch=FLAGS.ch, ch_mult=FLAGS.ch_mult, attn=FLAGS.attn,
